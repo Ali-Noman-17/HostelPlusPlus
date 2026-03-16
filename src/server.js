@@ -79,11 +79,19 @@ app.get(`${API_PREFIX}/test-db`, async (req, res) => {
 });
 
 // Import routes
-
+const hostelRoutes = require('./routes/hostelroutes');
+const areaRoutes = require('./routes/arearoutes');
+const cityRoutes = require('./routes/cityroutes');
+const amenityRoutes = require('./routes/amenityroutes');
+const searchRoutes = require('./routes/searchroutes');
 
 
 // API Routes
-
+app.use(`${API_PREFIX}/hostels`, hostelRoutes);
+app.use(`${API_PREFIX}/areas`, areaRoutes);
+app.use(`${API_PREFIX}/cities`, cityRoutes);
+app.use(`${API_PREFIX}/amenities`, amenityRoutes);
+app.use(`${API_PREFIX}/search`, searchRoutes);
 
 
 app.use((req, res) => {
