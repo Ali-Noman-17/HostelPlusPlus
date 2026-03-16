@@ -88,7 +88,8 @@ const authRoutes = require('./routes/authroutes');
 const userRoutes = require('./routes/userroutes');
 const adminRoutes = require('./routes/adminroutes');
 const ownerRoutes = require('./routes/ownerroutes');
-
+const bookingRoutes = require('./routes/bookingroutes');
+const reviewRoutes = require('./routes/reviewroutes');
 
 // API Routes
 app.use(`${API_PREFIX}/hostels`, hostelRoutes);
@@ -100,6 +101,8 @@ app.use(`${API_PREFIX}/auth`, authRoutes);
 app.use(`${API_PREFIX}/users`, userRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 app.use(`${API_PREFIX}/owner`, ownerRoutes);
+app.use(`${API_PREFIX}/bookings`, bookingRoutes);
+app.use(`${API_PREFIX}/reviews`, reviewRoutes);
 
 
 app.use((req, res) => {
