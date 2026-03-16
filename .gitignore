@@ -1,0 +1,22 @@
+# Node modules
+node_modules/
+
+# Environment variables
+# kept out for now
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Database
+*.sqlite
+*.db
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
