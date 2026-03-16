@@ -1,0 +1,2874 @@
+openapi: 3.0.3
+info:
+  title: HostelPlusPlus API
+  description: >
+    REST API for finding, listing, and booking hostels. Supports multiple user
+    roles: **student**, **professional**, **owner**, and **admin**.
+    Authentication is handled via JWT Bearer tokens.
+  version: 1.0.0
+  contact:
+    name: HostelPlusPlus
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local development server
+
+tags:
+  - name: Auth
+    description: Registration, login, and token verification
+  - name: Hostels
+    description: Public hostel listings
+  - name: Search
+    description: Search and availability checking
+  - name: Cities
+    description: City listings and their areas
+  - name: Areas
+    description: Area listings and hostels by area
+  - name: Amenities
+    description: Hostel amenity catalogue
+  - name: Bookings
+    description: Create and manage bookings (authenticated)
+  - name: Reviews
+    description: Create and manage hostel reviews
+  - name: Users
+    description: User profile and wishlist management (authenticated)
+  - name: Owner
+    description: "Hostel and room management for owners (role: owner)"
+  - name: Admin
+    description: "Platform administration (role: admin)"
+
+# ---------------------------------------------------------------------------
+# SECURITY SCHEME
+# ---------------------------------------------------------------------------
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from POST /auth/login or POST /auth/register
+
+  # -------------------------------------------------------------------------
+  # REUSABLE SCHEMAS
+  # -------------------------------------------------------------------------
+  schemas:
+
+    # --- Generic wrappers ---------------------------------------------------
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: Error message
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: Validation failed
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 100
+        pages:
+          type: integer
+          example: 5
+
+    # --- Domain schemas -----------------------------------------------------
+    User:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          example: 42
+        first_name:
+          type: string
+          example: John
+        last_name:
+          type: string
+          example: Doe
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        phone:
+          type: string
+          example: "+923001234567"
+        user_type:
+          type: string
+          enum: [student, professional, owner, admin]
+          example: student
+        verified:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+        last_login:
+          type: string
+          format: date-time
+          nullable: true
+        institution_id:
+          type: integer
+          nullable: true
+
+    TokenData:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    City:
+      type: object
+      properties:
+        city_id:
+          type: integer
+          example: 1
+        city_name:
+          type: string
+          example: Lahore
+        state:
+          type: string
+          example: Punjab
+        country:
+          type: string
+          example: Pakistan
+        hostel_count:
+          type: integer
+          example: 24
+
+    Area:
+      type: object
+      properties:
+        area_id:
+          type: integer
+          example: 5
+        area_name:
+          type: string
+          example: Gulberg
+        pincode:
+          type: string
+          example: "54000"
+        city_id:
+          type: integer
+          example: 1
+        city_name:
+          type: string
+          example: Lahore
+        country:
+          type: string
+          example: Pakistan
+
+    AmenitySummary:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 3
+        name:
+          type: string
+          example: WiFi
+        icon:
+          type: string
+          example: wifi
+
+    HostelSummary:
+      type: object
+      properties:
+        hostel_id:
+          type: integer
+          example: 10
+        hostel_name:
+          type: string
+          example: Green Valley Hostel
+        address:
+          type: string
+          example: 12 Garden Street
+        area_name:
+          type: string
+          example: Gulberg
+        city_name:
+          type: string
+          example: Lahore
+        gender_preference:
+          type: string
+          enum: [male, female, co-ed]
+          example: co-ed
+        rating:
+          type: number
+          format: float
+          example: 4.2
+        total_reviews:
+          type: integer
+          example: 18
+        is_verified:
+          type: boolean
+          example: true
+        min_rent:
+          type: number
+          format: float
+          example: 8000
+        available_rooms:
+          type: integer
+          example: 3
+        amenities:
+          type: string
+          description: Comma-separated top-5 amenities
+          example: "WiFi, Laundry, Parking, Meals, Generator"
+
+    Room:
+      type: object
+      properties:
+        hostel_room_id:
+          type: integer
+          example: 101
+        room_type:
+          type: string
+          example: Double Sharing
+        room_number:
+          type: string
+          example: "A-201"
+          nullable: true
+        total_beds_in_room:
+          type: integer
+          example: 2
+        available_beds:
+          type: integer
+          example: 1
+        monthly_rent:
+          type: number
+          example: 12000
+        security_deposit:
+          type: number
+          example: 5000
+        is_available:
+          type: boolean
+          example: true
+        floor_number:
+          type: integer
+          example: 2
+
+    HostelDetail:
+      allOf:
+        - $ref: '#/components/schemas/HostelSummary'
+        - type: object
+          properties:
+            owner_name:
+              type: string
+              example: Ali Hassan
+            contact_number:
+              type: string
+              example: "+923009876543"
+            alternate_number:
+              type: string
+              nullable: true
+            email:
+              type: string
+              format: email
+              nullable: true
+            pincode:
+              type: string
+              nullable: true
+            latitude:
+              type: number
+              format: float
+              nullable: true
+            longitude:
+              type: number
+              format: float
+              nullable: true
+            description:
+              type: string
+              nullable: true
+            stats:
+              type: object
+              properties:
+                total_rooms:
+                  type: integer
+                available_rooms:
+                  type: integer
+                total_beds:
+                  type: integer
+                available_beds:
+                  type: integer
+                price_range:
+                  type: object
+                  properties:
+                    min:
+                      type: number
+                    max:
+                      type: number
+            rooms:
+              type: array
+              items:
+                $ref: '#/components/schemas/Room'
+            amenities:
+              type: array
+              items:
+                type: object
+                properties:
+                  amenity_name:
+                    type: string
+                  category:
+                    type: string
+                  is_available:
+                    type: boolean
+                  additional_charges:
+                    type: number
+                    nullable: true
+                  notes:
+                    type: string
+                    nullable: true
+            reviews:
+              type: array
+              items:
+                $ref: '#/components/schemas/ReviewSummary'
+            nearby_places:
+              type: array
+              items:
+                type: object
+                properties:
+                  place_name:
+                    type: string
+                  category_name:
+                    type: string
+                  distance_km:
+                    type: number
+                  estimated_time_minutes:
+                    type: integer
+                  walking_distance:
+                    type: boolean
+                  landmark:
+                    type: string
+
+    Booking:
+      type: object
+      properties:
+        booking_id:
+          type: integer
+          example: 500
+        booking_reference:
+          type: string
+          example: BKG12345678
+        check_in_date:
+          type: string
+          format: date
+          example: "2026-04-01"
+        check_out_date:
+          type: string
+          format: date
+          example: "2026-07-01"
+        status:
+          type: string
+          enum: [pending, confirmed, cancelled, completed]
+          example: confirmed
+        total_amount:
+          type: number
+          example: 36000
+        advance_paid:
+          type: number
+          example: 7200
+        payment_status:
+          type: string
+          enum: [unpaid, partial, paid]
+          example: partial
+        special_requests:
+          type: string
+          nullable: true
+        hostel_id:
+          type: integer
+        hostel_name:
+          type: string
+        address:
+          type: string
+        hostel_contact:
+          type: string
+        area_name:
+          type: string
+        city_name:
+          type: string
+        room_type:
+          type: string
+        room_number:
+          type: string
+        user_id:
+          type: integer
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+
+    ReviewSummary:
+      type: object
+      properties:
+        review_id:
+          type: integer
+        rating:
+          type: number
+          format: float
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          nullable: true
+        cleanliness_rating:
+          type: number
+          nullable: true
+        food_rating:
+          type: number
+          nullable: true
+        safety_rating:
+          type: number
+          nullable: true
+        location_rating:
+          type: number
+          nullable: true
+        review_date:
+          type: string
+          format: date
+        user_name:
+          type: string
+          example: John D
+        helpful_count:
+          type: integer
+
+    WishlistItem:
+      type: object
+      properties:
+        wishlist_id:
+          type: integer
+        added_date:
+          type: string
+          format: date-time
+        notes:
+          type: string
+          nullable: true
+        hostel_id:
+          type: integer
+        hostel_name:
+          type: string
+        address:
+          type: string
+        area_name:
+          type: string
+        city_name:
+          type: string
+        rating:
+          type: number
+        gender_preference:
+          type: string
+        min_rent:
+          type: number
+
+  # -------------------------------------------------------------------------
+  # REUSABLE PARAMETERS
+  # -------------------------------------------------------------------------
+  parameters:
+    PathId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Resource identifier
+
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+      description: Page number
+
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+      description: Items per page
+
+  # -------------------------------------------------------------------------
+  # REUSABLE RESPONSES
+  # -------------------------------------------------------------------------
+  responses:
+    Unauthorized:
+      description: Missing or invalid JWT token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: No token provided
+
+    Forbidden:
+      description: Authenticated but insufficient role/permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: Forbidden
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: Resource not found
+
+    Conflict:
+      description: Conflict with existing resource state
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ValidationError:
+      description: Request body failed validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: Internal server error
+
+# =============================================================================
+# PATHS
+# =============================================================================
+paths:
+
+  # ---------------------------------------------------------------------------
+  # HEALTH
+  # ---------------------------------------------------------------------------
+  /health:
+    get:
+      summary: Health check
+      description: Returns server and database status. No API prefix required.
+      operationId: healthCheck
+      tags: [Auth]
+      responses:
+        "200":
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+                  uptime:
+                    type: number
+                  environment:
+                    type: string
+                  database:
+                    type: string
+                    example: connected
+
+  # ---------------------------------------------------------------------------
+  # AUTH
+  # ---------------------------------------------------------------------------
+  /auth/register:
+    post:
+      summary: Register a new user
+      operationId: register
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [first_name, email, phone, password]
+              properties:
+                first_name:
+                  type: string
+                  minLength: 2
+                  maxLength: 50
+                  example: John
+                last_name:
+                  type: string
+                  maxLength: 50
+                  example: Doe
+                email:
+                  type: string
+                  format: email
+                  example: john@example.com
+                phone:
+                  type: string
+                  pattern: '^[0-9+\-\s]{10,20}$'
+                  example: "+923001234567"
+                password:
+                  type: string
+                  minLength: 6
+                  format: password
+                  example: secret123
+                user_type:
+                  type: string
+                  enum: [student, professional, owner, admin]
+                  default: student
+                institution_id:
+                  type: integer
+                  description: Required when user_type is student
+                  example: 1
+      responses:
+        "201":
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: User registered successfully
+                      data:
+                        $ref: '#/components/schemas/TokenData'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /auth/login:
+    post:
+      summary: Login and receive a JWT token
+      operationId: login
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: john@example.com
+                password:
+                  type: string
+                  format: password
+                  example: secret123
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Login successful
+                      data:
+                        $ref: '#/components/schemas/TokenData'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: Invalid email or password
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /auth/verify:
+    get:
+      summary: Verify JWT token and return current user
+      operationId: verifyToken
+      tags: [Auth]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/User'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # ---------------------------------------------------------------------------
+  # HOSTELS (Public)
+  # ---------------------------------------------------------------------------
+  /hostels:
+    get:
+      summary: List all verified hostels
+      description: Returns up to 20 verified hostels ordered by rating descending.
+      operationId: getAllHostels
+      tags: [Hostels]
+      responses:
+        "200":
+          description: List of hostels
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      count:
+                        type: integer
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HostelSummary'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /hostels/{id}:
+    get:
+      summary: Get hostel details by ID
+      description: Returns full hostel details including rooms, amenities, reviews, and nearby places.
+      operationId: getHostelById
+      tags: [Hostels]
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: Hostel detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HostelDetail'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # ---------------------------------------------------------------------------
+  # SEARCH
+  # ---------------------------------------------------------------------------
+  /search:
+    get:
+      summary: Search and filter verified hostels
+      operationId: searchHostels
+      tags: [Search]
+      parameters:
+        - name: city_id
+          in: query
+          schema:
+            type: integer
+          description: Filter by city
+        - name: area_id
+          in: query
+          schema:
+            type: integer
+          description: Filter by area
+        - name: min_price
+          in: query
+          schema:
+            type: number
+          description: Minimum monthly rent
+        - name: max_price
+          in: query
+          schema:
+            type: number
+          description: Maximum monthly rent
+        - name: gender
+          in: query
+          schema:
+            type: string
+            enum: [male, female]
+          description: Gender preference filter (co-ed hostels always included)
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [rating, price, reviews]
+            default: rating
+        - $ref: '#/components/parameters/PageParam'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: Filtered hostel results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HostelSummary'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /search/{id}/availability:
+    get:
+      summary: Check room availability for a hostel
+      operationId: checkAvailability
+      tags: [Search]
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+        - name: check_in
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          example: "2026-04-01"
+        - name: check_out
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          example: "2026-07-01"
+      responses:
+        "200":
+          description: Availability results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          total_rooms:
+                            type: integer
+                          available_rooms:
+                            type: integer
+                          rooms:
+                            type: array
+                            items:
+                              allOf:
+                                - $ref: '#/components/schemas/Room'
+                                - type: object
+                                  properties:
+                                    conflicting_bookings:
+                                      type: integer
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # ---------------------------------------------------------------------------
+  # CITIES
+  # ---------------------------------------------------------------------------
+  /cities:
+    get:
+      summary: List all cities with hostel counts
+      operationId: getAllCities
+      tags: [Cities]
+      responses:
+        "200":
+          description: List of cities
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      count:
+                        type: integer
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/City'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /cities/{id}/areas:
+    get:
+      summary: Get areas in a city
+      operationId: getCityAreas
+      tags: [Cities]
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: List of areas
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      city_id:
+                        type: string
+                      count:
+                        type: integer
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            area_id:
+                              type: integer
+                            area_name:
+                              type: string
+                            pincode:
+                              type: string
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # ---------------------------------------------------------------------------
+  # AREAS
+  # ---------------------------------------------------------------------------
+  /areas:
+    get:
+      summary: List all areas (optionally filtered by city)
+      operationId: getAllAreas
+      tags: [Areas]
+      parameters:
+        - name: city_id
+          in: query
+          schema:
+            type: integer
+          description: Filter areas by city
+      responses:
+        "200":
+          description: List of areas
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      count:
+                        type: integer
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Area'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /areas/{id}/hostels:
+    get:
+      summary: Get verified hostels in an area
+      operationId: getHostelsByArea
+      tags: [Areas]
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: Hostels in the area
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      area_id:
+                        type: string
+                      count:
+                        type: integer
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            hostel_id:
+                              type: integer
+                            hostel_name:
+                              type: string
+                            address:
+                              type: string
+                            rating:
+                              type: number
+                            gender_preference:
+                              type: string
+                            min_rent:
+                              type: number
+                            available_rooms:
+                              type: integer
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # ---------------------------------------------------------------------------
+  # AMENITIES
+  # ---------------------------------------------------------------------------
+  /amenities:
+    get:
+      summary: List all amenities grouped by category
+      operationId: getAllAmenities
+      tags: [Amenities]
+      responses:
+        "200":
+          description: Amenities grouped by category
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        additionalProperties:
+                          type: array
+                          items:
+                            $ref: '#/components/schemas/AmenitySummary'
+                        example:
+                          Utilities:
+                            - id: 1
+                              name: WiFi
+                              icon: wifi
+                          Meals:
+                            - id: 4
+                              name: Breakfast
+                              icon: food
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /amenities/categories:
+    get:
+      summary: List all amenity category names
+      operationId: getAmenityCategories
+      tags: [Amenities]
+      responses:
+        "200":
+          description: List of category names
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: string
+                        example: [Utilities, Meals, Security, Transport]
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # ---------------------------------------------------------------------------
+  # BOOKINGS
+  # ---------------------------------------------------------------------------
+  /bookings:
+    post:
+      summary: Create a booking
+      description: >
+        Creates a confirmed booking for a hostel room. Automatically calculates
+        total amount and 20% advance payment. Uses a database transaction to
+        prevent double-booking.
+      operationId: createBooking
+      tags: [Bookings]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hostel_room_id, check_in_date, check_out_date]
+              properties:
+                hostel_room_id:
+                  type: integer
+                  example: 101
+                check_in_date:
+                  type: string
+                  format: date
+                  example: "2026-04-01"
+                check_out_date:
+                  type: string
+                  format: date
+                  example: "2026-07-01"
+                special_requests:
+                  type: string
+                  nullable: true
+                  example: Ground floor preferred
+      responses:
+        "201":
+          description: Booking confirmed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Booking confirmed
+                      data:
+                        type: object
+                        properties:
+                          booking_id:
+                            type: integer
+                          booking_reference:
+                            type: string
+                            example: BKG12345678
+                          total_amount:
+                            type: number
+                            example: 36000
+                          advance_paid:
+                            type: number
+                            example: 7200
+                          balance_due:
+                            type: number
+                            example: 28800
+                          check_in_date:
+                            type: string
+                            format: date
+                          check_out_date:
+                            type: string
+                            format: date
+        "400":
+          description: Invalid dates or missing fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: Room not found
+        "409":
+          description: No beds available or dates conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                noBeds:
+                  value:
+                    success: false
+                    error: No beds available in this room
+                conflict:
+                  value:
+                    success: false
+                    error: Room already booked for these dates
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /bookings/{id}:
+    get:
+      summary: Get booking by ID
+      description: Only the booking owner or an admin can view full booking details.
+      operationId: getBookingById
+      tags: [Bookings]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: Booking details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Booking'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /bookings/{id}/cancel:
+    post:
+      summary: Cancel a booking
+      description: Cancels a booking and increments available beds. Only the booking owner, hostel owner, or admin can cancel.
+      operationId: cancelBooking
+      tags: [Bookings]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  nullable: true
+                  example: Change of plans
+      responses:
+        "200":
+          description: Booking cancelled
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Booking cancelled successfully
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: Booking already cancelled or completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # ---------------------------------------------------------------------------
+  # REVIEWS
+  # ---------------------------------------------------------------------------
+  /reviews/hostel/{id}:
+    get:
+      summary: Get reviews for a hostel
+      operationId: getHostelReviews
+      tags: [Reviews]
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+        - $ref: '#/components/parameters/PageParam'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [recent, highest, lowest, helpful]
+            default: recent
+      responses:
+        "200":
+          description: Paginated hostel reviews with summary stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          summary:
+                            type: object
+                            properties:
+                              total_reviews:
+                                type: integer
+                              average_rating:
+                                type: string
+                                example: "4.2"
+                              average_cleanliness:
+                                type: string
+                              average_food:
+                                type: string
+                              average_safety:
+                                type: string
+                              average_location:
+                                type: string
+                          reviews:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/ReviewSummary'
+                          pagination:
+                            $ref: '#/components/schemas/Pagination'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /reviews:
+    post:
+      summary: Post a review for a hostel
+      description: A user can only review a hostel they have booked. One review per hostel per user.
+      operationId: createReview
+      tags: [Reviews]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hostel_id, booking_id, rating]
+              properties:
+                hostel_id:
+                  type: integer
+                booking_id:
+                  type: integer
+                rating:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+                  example: 4
+                cleanliness_rating:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+                  nullable: true
+                food_rating:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+                  nullable: true
+                safety_rating:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+                  nullable: true
+                location_rating:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+                  nullable: true
+                comment:
+                  type: string
+                  nullable: true
+                  example: Great place, clean and affordable!
+      responses:
+        "201":
+          description: Review created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Review posted successfully
+                      data:
+                        type: object
+                        properties:
+                          review_id:
+                            type: integer
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          description: Booking not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "409":
+          description: User already reviewed this hostel
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /reviews/{id}:
+    put:
+      summary: Update a review
+      description: Reviews can only be edited within 7 days of posting.
+      operationId: updateReview
+      tags: [Reviews]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rating:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+                cleanliness_rating:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+                food_rating:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+                safety_rating:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+                location_rating:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+                comment:
+                  type: string
+      responses:
+        "200":
+          description: Review updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Review updated successfully
+        "400":
+          description: No fields to update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Review edit window expired (7 days)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      summary: Delete a review
+      operationId: deleteReview
+      tags: [Reviews]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: Review deleted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Review deleted successfully
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /reviews/user/me:
+    get:
+      summary: Get the authenticated user's reviews
+      operationId: getMyReviews
+      tags: [Reviews]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: User's reviews
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/ReviewSummary'
+                            - type: object
+                              properties:
+                                hostel_id:
+                                  type: integer
+                                hostel_name:
+                                  type: string
+                                address:
+                                  type: string
+                                city_name:
+                                  type: string
+                                area_name:
+                                  type: string
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /reviews/{id}/helpful:
+    post:
+      summary: Mark a review as helpful
+      operationId: markReviewHelpful
+      tags: [Reviews]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: Review marked as helpful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Review marked as helpful
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # ---------------------------------------------------------------------------
+  # USERS
+  # ---------------------------------------------------------------------------
+  /users/profile:
+    get:
+      summary: Get the authenticated user's profile
+      operationId: getProfile
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/User'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+    put:
+      summary: Update the authenticated user's profile
+      operationId: updateProfile
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                first_name:
+                  type: string
+                  minLength: 2
+                  maxLength: 50
+                last_name:
+                  type: string
+                  maxLength: 50
+                phone:
+                  type: string
+                  pattern: '^[0-9+\-\s]{10,20}$'
+                institution_id:
+                  type: integer
+      responses:
+        "200":
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Profile updated successfully
+                      data:
+                        $ref: '#/components/schemas/User'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /users/change-password:
+    put:
+      summary: Change the authenticated user's password
+      operationId: changePassword
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password:
+                  type: string
+                  format: password
+                new_password:
+                  type: string
+                  format: password
+                  minLength: 6
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Password changed successfully
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          description: Current password incorrect or not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /users/bookings:
+    get:
+      summary: Get all bookings for the authenticated user
+      operationId: getUserBookings
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User's bookings
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      count:
+                        type: integer
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            booking_id:
+                              type: integer
+                            booking_reference:
+                              type: string
+                            check_in_date:
+                              type: string
+                              format: date
+                            check_out_date:
+                              type: string
+                              format: date
+                            status:
+                              type: string
+                            total_amount:
+                              type: number
+                            advance_paid:
+                              type: number
+                            payment_status:
+                              type: string
+                            special_requests:
+                              type: string
+                            booking_date:
+                              type: string
+                              format: date-time
+                            hostel_id:
+                              type: integer
+                            hostel_name:
+                              type: string
+                            address:
+                              type: string
+                            room_type:
+                              type: string
+                            room_number:
+                              type: string
+                            monthly_rent:
+                              type: number
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /users/wishlist:
+    get:
+      summary: Get the authenticated user's wishlist
+      operationId: getWishlist
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Wishlist items
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      count:
+                        type: integer
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WishlistItem'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /users/wishlist/{hostelId}:
+    post:
+      summary: Add a hostel to the wishlist
+      operationId: addToWishlist
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: hostelId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+                  nullable: true
+                  example: Interested in the double room
+      responses:
+        "201":
+          description: Added to wishlist
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Added to wishlist
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          description: Hostel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "409":
+          description: Already in wishlist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      summary: Remove a hostel from the wishlist
+      operationId: removeFromWishlist
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: hostelId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Removed from wishlist
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Removed from wishlist
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          description: Hostel not in wishlist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # ---------------------------------------------------------------------------
+  # OWNER
+  # ---------------------------------------------------------------------------
+  /owner/dashboard:
+    get:
+      summary: Owner dashboard summary
+      description: Returns hostel, room, booking, and revenue statistics for the authenticated owner.
+      operationId: getOwnerDashboard
+      tags: [Owner]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          hostels:
+                            type: object
+                            properties:
+                              total:
+                                type: integer
+                          rooms:
+                            type: object
+                            properties:
+                              total:
+                                type: integer
+                              beds:
+                                type: object
+                                properties:
+                                  total:
+                                    type: integer
+                                  available:
+                                    type: integer
+                          bookings:
+                            type: object
+                            properties:
+                              total:
+                                type: integer
+                              confirmed:
+                                type: integer
+                              pending:
+                                type: integer
+                              completed:
+                                type: integer
+                          revenue:
+                            type: object
+                            properties:
+                              total:
+                                type: number
+                          recent_activity:
+                            type: array
+                            items:
+                              type: object
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /owner/hostels:
+    get:
+      summary: List owner's hostels
+      operationId: getMyHostels
+      tags: [Owner]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: Owner's hostels
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HostelSummary'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+    post:
+      summary: Register a new hostel
+      description: Creates a new hostel under the authenticated owner. Hostel is unverified until approved by admin.
+      operationId: createHostel
+      tags: [Owner]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hostel_name, contact_number, address, city_id, gender_preference]
+              properties:
+                hostel_name:
+                  type: string
+                  example: Sunrise Hostel
+                contact_number:
+                  type: string
+                  example: "+923001234567"
+                alternate_number:
+                  type: string
+                  nullable: true
+                email:
+                  type: string
+                  format: email
+                  nullable: true
+                address:
+                  type: string
+                  example: 45 Main Boulevard
+                city_id:
+                  type: integer
+                  example: 1
+                area_id:
+                  type: integer
+                  nullable: true
+                pincode:
+                  type: string
+                  nullable: true
+                latitude:
+                  type: number
+                  format: float
+                  nullable: true
+                longitude:
+                  type: number
+                  format: float
+                  nullable: true
+                gender_preference:
+                  type: string
+                  enum: [male, female, co-ed]
+                  default: co-ed
+                description:
+                  type: string
+                  nullable: true
+      responses:
+        "201":
+          description: Hostel registered (pending admin verification)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Hostel registered successfully. It will be visible after admin verification.
+                      data:
+                        type: object
+                        properties:
+                          hostel_id:
+                            type: integer
+                          hostel_name:
+                            type: string
+                          is_verified:
+                            type: boolean
+                            example: false
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /owner/hostels/{id}:
+    put:
+      summary: Update a hostel
+      operationId: updateHostel
+      tags: [Owner]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hostel_name:
+                  type: string
+                contact_number:
+                  type: string
+                alternate_number:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                address:
+                  type: string
+                area_id:
+                  type: integer
+                pincode:
+                  type: string
+                latitude:
+                  type: number
+                longitude:
+                  type: number
+                gender_preference:
+                  type: string
+                  enum: [male, female, co-ed]
+                description:
+                  type: string
+      responses:
+        "200":
+          description: Hostel updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Hostel updated successfully
+        "400":
+          description: No valid fields to update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /owner/hostels/{id}/rooms:
+    get:
+      summary: Get rooms for a hostel owned by the authenticated owner
+      operationId: getHostelRooms
+      tags: [Owner]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: Room list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      count:
+                        type: integer
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Room'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+    post:
+      summary: Add a room to a hostel
+      operationId: addRoom
+      tags: [Owner]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [room_type_id, total_beds_in_room, monthly_rent]
+              properties:
+                room_type_id:
+                  type: integer
+                  example: 2
+                room_number:
+                  type: string
+                  nullable: true
+                  example: "B-101"
+                total_beds_in_room:
+                  type: integer
+                  example: 3
+                monthly_rent:
+                  type: number
+                  example: 10000
+                security_deposit:
+                  type: number
+                  nullable: true
+                  example: 5000
+                floor_number:
+                  type: integer
+                  default: 1
+      responses:
+        "201":
+          description: Room added
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Room added successfully
+                      data:
+                        type: object
+                        properties:
+                          hostel_room_id:
+                            type: integer
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /owner/hostels/{id}/bookings:
+    get:
+      summary: Get bookings for a hostel owned by the authenticated owner
+      operationId: getHostelBookings
+      tags: [Owner]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, confirmed, cancelled, completed]
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        "200":
+          description: Hostel bookings
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            booking_id:
+                              type: integer
+                            booking_reference:
+                              type: string
+                            check_in_date:
+                              type: string
+                              format: date
+                            check_out_date:
+                              type: string
+                              format: date
+                            status:
+                              type: string
+                            total_amount:
+                              type: number
+                            advance_paid:
+                              type: number
+                            payment_status:
+                              type: string
+                            special_requests:
+                              type: string
+                            booking_date:
+                              type: string
+                              format: date-time
+                            guest_name:
+                              type: string
+                            guest_email:
+                              type: string
+                            guest_phone:
+                              type: string
+                            room_type:
+                              type: string
+                            room_number:
+                              type: string
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /owner/rooms/{id}:
+    put:
+      summary: Update a room
+      operationId: updateRoom
+      tags: [Owner]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                room_number:
+                  type: string
+                total_beds_in_room:
+                  type: integer
+                monthly_rent:
+                  type: number
+                security_deposit:
+                  type: number
+                is_available:
+                  type: boolean
+                floor_number:
+                  type: integer
+      responses:
+        "200":
+          description: Room updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Room updated successfully
+        "400":
+          description: No valid fields to update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      summary: Delete a room
+      description: Cannot delete rooms with active (confirmed or pending) bookings.
+      operationId: deleteRoom
+      tags: [Owner]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: Room deleted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Room deleted successfully
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: Room has active bookings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error: Cannot delete room with active bookings
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # ---------------------------------------------------------------------------
+  # ADMIN
+  # ---------------------------------------------------------------------------
+  /admin/dashboard:
+    get:
+      summary: Admin dashboard statistics
+      operationId: getDashboardStats
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Platform-wide statistics
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          totals:
+                            type: object
+                            properties:
+                              users:
+                                type: integer
+                              hostels:
+                                type: integer
+                              bookings:
+                                type: integer
+                              reviews:
+                                type: integer
+                              revenue:
+                                type: number
+                          pending:
+                            type: object
+                            properties:
+                              hostels:
+                                type: integer
+                              users:
+                                type: integer
+                          recent_activity:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                booking_id:
+                                  type: integer
+                                booking_reference:
+                                  type: string
+                                status:
+                                  type: string
+                                total_amount:
+                                  type: number
+                                created_at:
+                                  type: string
+                                  format: date-time
+                                user_name:
+                                  type: string
+                                hostel_name:
+                                  type: string
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/users:
+    get:
+      summary: List all users (admin)
+      operationId: adminGetAllUsers
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [student, professional, owner, admin]
+        - name: verified
+          in: query
+          schema:
+            type: boolean
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by name, email, or phone
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        "200":
+          description: Paginated user list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/User'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/users/{id}:
+    get:
+      summary: Get a user's full detail (admin)
+      operationId: adminGetUserById
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: User detail with booking and review stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/User'
+                          - type: object
+                            properties:
+                              institution_name:
+                                type: string
+                                nullable: true
+                              total_bookings:
+                                type: integer
+                              total_reviews:
+                                type: integer
+                              recent_bookings:
+                                type: array
+                                items:
+                                  type: object
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      summary: Soft-delete a user (admin)
+      description: Anonymises user data rather than performing a hard delete.
+      operationId: adminDeleteUser
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: User deleted (anonymised)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: User deleted successfully
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/users/{id}/role:
+    put:
+      summary: Change a user's role (admin)
+      operationId: adminChangeUserRole
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [student, professional, owner, admin]
+                  example: owner
+      responses:
+        "200":
+          description: Role changed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: User role changed to owner successfully
+        "400":
+          description: Invalid role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/users/{id}/verify:
+    put:
+      summary: Verify a user account (admin)
+      operationId: adminVerifyUser
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: User verified
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: User verified successfully
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: User already verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/hostels:
+    get:
+      summary: List all hostels (admin, including unverified)
+      operationId: adminGetAllHostels
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: verified
+          in: query
+          schema:
+            type: boolean
+        - name: city_id
+          in: query
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        "200":
+          description: Paginated hostel list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HostelSummary'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/hostels/pending:
+    get:
+      summary: List pending (unverified) hostels (admin)
+      operationId: adminGetPendingHostels
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Pending hostels
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      count:
+                        type: integer
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            hostel_id:
+                              type: integer
+                            hostel_name:
+                              type: string
+                            owner_name:
+                              type: string
+                            contact_number:
+                              type: string
+                            email:
+                              type: string
+                            address:
+                              type: string
+                            area_name:
+                              type: string
+                            city_name:
+                              type: string
+                            created_at:
+                              type: string
+                              format: date-time
+                            total_rooms:
+                              type: integer
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/hostels/{id}/verify:
+    put:
+      summary: Verify a hostel (admin)
+      operationId: adminVerifyHostel
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: Hostel verified
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Hostel verified successfully
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: Hostel already verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/ServerError'
