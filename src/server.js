@@ -84,6 +84,10 @@ const areaRoutes = require('./routes/arearoutes');
 const cityRoutes = require('./routes/cityroutes');
 const amenityRoutes = require('./routes/amenityroutes');
 const searchRoutes = require('./routes/searchroutes');
+const authRoutes = require('./routes/authroutes');
+const userRoutes = require('./routes/userroutes');
+const adminRoutes = require('./routes/adminroutes');
+const ownerRoutes = require('./routes/ownerroutes');
 
 
 // API Routes
@@ -92,6 +96,10 @@ app.use(`${API_PREFIX}/areas`, areaRoutes);
 app.use(`${API_PREFIX}/cities`, cityRoutes);
 app.use(`${API_PREFIX}/amenities`, amenityRoutes);
 app.use(`${API_PREFIX}/search`, searchRoutes);
+app.use(`${API_PREFIX}/auth`, authRoutes);
+app.use(`${API_PREFIX}/users`, userRoutes);
+app.use(`${API_PREFIX}/admin`, adminRoutes);
+app.use(`${API_PREFIX}/owner`, ownerRoutes);
 
 
 app.use((req, res) => {
