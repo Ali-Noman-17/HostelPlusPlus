@@ -1912,52 +1912,6 @@ paths:
         "500":
           $ref: '#/components/responses/ServerError'
 
-  /users/change-password:
-    put:
-      summary: Change the authenticated user's password
-      operationId: changePassword
-      tags: [Users]
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [current_password, new_password]
-              properties:
-                current_password:
-                  type: string
-                  format: password
-                new_password:
-                  type: string
-                  format: password
-                  minLength: 6
-      responses:
-        "200":
-          description: Password changed
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/SuccessResponse'
-                  - type: object
-                    properties:
-                      message:
-                        type: string
-                        example: Password changed successfully
-        "400":
-          $ref: '#/components/responses/ValidationError'
-        "401":
-          description: Current password incorrect
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        "500":
-          $ref: '#/components/responses/ServerError'
-
   /users/bookings:
     get:
       summary: Get all bookings for the authenticated user
