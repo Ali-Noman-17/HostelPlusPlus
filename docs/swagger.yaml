@@ -26,6 +26,8 @@ tags:
     description: Area listings and hostels by area
   - name: Amenities
     description: Hostel amenity catalogue
+  - name: Institutions
+    description: Educational institutions and workplaces
   - name: Bookings
     description: Create and manage bookings (authenticated)
   - name: Reviews
@@ -33,13 +35,10 @@ tags:
   - name: Users
     description: User profile and wishlist management (authenticated)
   - name: Owner
-    description: "Hostel and room management for owners (role: owner)"
+    description: Hostel and room management for owners (role: owner)
   - name: Admin
-    description: "Platform administration (role: admin)"
+    description: Platform administration (role: admin)
 
-# ---------------------------------------------------------------------------
-# SECURITY SCHEME
-# ---------------------------------------------------------------------------
 components:
   securitySchemes:
     BearerAuth:
@@ -48,12 +47,7 @@ components:
       bearerFormat: JWT
       description: JWT token obtained from POST /auth/login or POST /auth/register
 
-  # -------------------------------------------------------------------------
-  # REUSABLE SCHEMAS
-  # -------------------------------------------------------------------------
   schemas:
-
-    # --- Generic wrappers ---------------------------------------------------
     SuccessResponse:
       type: object
       properties:
@@ -106,7 +100,6 @@ components:
           type: integer
           example: 5
 
-    # --- Domain schemas -----------------------------------------------------
     User:
       type: object
       properties:
@@ -207,6 +200,46 @@ components:
           type: string
           example: wifi
 
+    Institution:
+      type: object
+      properties:
+        institution_id:
+          type: integer
+          example: 1
+        institution_name:
+          type: string
+          example: University of Punjab
+        institution_type:
+          type: string
+          enum: [university, college, workplace, other]
+          example: university
+        address:
+          type: string
+          nullable: true
+        city_id:
+          type: integer
+          example: 1
+        city_name:
+          type: string
+          example: Lahore
+        area_id:
+          type: integer
+          nullable: true
+        area_name:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+          format: float
+          nullable: true
+        longitude:
+          type: number
+          format: float
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
     HostelSummary:
       type: object
       properties:
@@ -283,6 +316,35 @@ components:
           type: integer
           example: 2
 
+    TransportInfo:
+      type: object
+      properties:
+        transport_type:
+          type: string
+          example: metro
+        route_name:
+          type: string
+          example: Orange Line
+        route_number:
+          type: string
+          nullable: true
+        stop_name:
+          type: string
+          example: Johar Town Station
+        distance_to_stop_km:
+          type: number
+          example: 0.8
+        frequency_minutes:
+          type: integer
+          nullable: true
+          example: 10
+        first_ride:
+          type: string
+          example: "06:00"
+        last_ride:
+          type: string
+          example: "22:00"
+
     HostelDetail:
       allOf:
         - $ref: '#/components/schemas/HostelSummary'
@@ -358,6 +420,8 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/ReviewSummary'
+            transport:
+              $ref: '#/components/schemas/TransportInfo'
             nearby_places:
               type: array
               items:
@@ -374,7 +438,7 @@ components:
                   walking_distance:
                     type: boolean
                   landmark:
-                    type: string
+                    type: boolean
 
     Booking:
       type: object
@@ -405,7 +469,7 @@ components:
           example: 7200
         payment_status:
           type: string
-          enum: [unpaid, partial, paid]
+          enum: [pending, partial, completed]
           example: partial
         special_requests:
           type: string
@@ -428,15 +492,16 @@ components:
           type: string
         user_id:
           type: integer
-        first_name:
+        guest_name:
           type: string
-        last_name:
-          type: string
-        email:
+        guest_email:
           type: string
           format: email
-        phone:
+        guest_phone:
           type: string
+        booking_date:
+          type: string
+          format: date-time
 
     ReviewSummary:
       type: object
@@ -500,9 +565,101 @@ components:
         min_rent:
           type: number
 
-  # -------------------------------------------------------------------------
-  # REUSABLE PARAMETERS
-  # -------------------------------------------------------------------------
+    AuditLog:
+      type: object
+      properties:
+        log_id:
+          type: integer
+        table_name:
+          type: string
+        record_id:
+          type: integer
+        action:
+          type: string
+          enum: [INSERT, UPDATE, DELETE]
+        old_data:
+          type: string
+          nullable: true
+        new_data:
+          type: string
+          nullable: true
+        changed_by_name:
+          type: string
+          nullable: true
+        changed_by_email:
+          type: string
+          nullable: true
+        changed_at:
+          type: string
+          format: date-time
+
+    DashboardStats:
+      type: object
+      properties:
+        totals:
+          type: object
+          properties:
+            users:
+              type: integer
+            hostels:
+              type: integer
+            bookings:
+              type: integer
+            reviews:
+              type: integer
+            revenue:
+              type: number
+        pending:
+          type: object
+          properties:
+            hostels:
+              type: integer
+            users:
+              type: integer
+        recent_activity:
+          type: array
+          items:
+            type: object
+
+    OwnerDashboardStats:
+      type: object
+      properties:
+        hostels:
+          type: object
+          properties:
+            total:
+              type: integer
+        rooms:
+          type: object
+          properties:
+            total:
+              type: integer
+            beds:
+              type: object
+              properties:
+                total:
+                  type: integer
+                available:
+                  type: integer
+        bookings:
+          type: object
+          properties:
+            total:
+              type: integer
+            confirmed:
+              type: integer
+            pending:
+              type: integer
+            completed:
+              type: integer
+        revenue:
+          type: object
+          properties:
+            total:
+              type: number
+        recent_activity:
+          type: array
+
   parameters:
     PathId:
       name: id
@@ -531,9 +688,6 @@ components:
         maximum: 100
       description: Items per page
 
-  # -------------------------------------------------------------------------
-  # REUSABLE RESPONSES
-  # -------------------------------------------------------------------------
   responses:
     Unauthorized:
       description: Missing or invalid JWT token
@@ -589,18 +743,11 @@ components:
             success: false
             error: Internal server error
 
-# =============================================================================
-# PATHS
-# =============================================================================
 paths:
-
-  # ---------------------------------------------------------------------------
-  # HEALTH
-  # ---------------------------------------------------------------------------
+  # Health
   /health:
     get:
       summary: Health check
-      description: Returns server and database status. No API prefix required.
       operationId: healthCheck
       tags: [Auth]
       responses:
@@ -625,9 +772,7 @@ paths:
                     type: string
                     example: connected
 
-  # ---------------------------------------------------------------------------
-  # AUTH
-  # ---------------------------------------------------------------------------
+  # Auth
   /auth/register:
     post:
       summary: Register a new user
@@ -665,7 +810,7 @@ paths:
                   example: secret123
                 user_type:
                   type: string
-                  enum: [student, professional, owner, admin]
+                  enum: [student, professional, owner]
                   default: student
                 institution_id:
                   type: integer
@@ -769,13 +914,10 @@ paths:
         "500":
           $ref: '#/components/responses/ServerError'
 
-  # ---------------------------------------------------------------------------
-  # HOSTELS (Public)
-  # ---------------------------------------------------------------------------
+  # Hostels
   /hostels:
     get:
       summary: List all verified hostels
-      description: Returns up to 20 verified hostels ordered by rating descending.
       operationId: getAllHostels
       tags: [Hostels]
       responses:
@@ -800,7 +942,6 @@ paths:
   /hostels/{id}:
     get:
       summary: Get hostel details by ID
-      description: Returns full hostel details including rooms, amenities, reviews, and nearby places.
       operationId: getHostelById
       tags: [Hostels]
       parameters:
@@ -822,9 +963,7 @@ paths:
         "500":
           $ref: '#/components/responses/ServerError'
 
-  # ---------------------------------------------------------------------------
-  # SEARCH
-  # ---------------------------------------------------------------------------
+  # Search
   /search:
     get:
       summary: Search and filter verified hostels
@@ -857,6 +996,27 @@ paths:
             type: string
             enum: [male, female]
           description: Gender preference filter (co-ed hostels always included)
+        - name: nearby_categories
+          in: query
+          schema:
+            type: string
+          description: Comma-separated category IDs for nearby places filter
+        - name: nearby_max_distance
+          in: query
+          schema:
+            type: number
+          description: Max distance in km for nearby places
+        - name: transport_type
+          in: query
+          schema:
+            type: string
+            enum: [bus, metro, train, auto]
+          description: Filter by public transport type
+        - name: transport_max_distance
+          in: query
+          schema:
+            type: number
+          description: Max distance to transport stop in km
         - name: sort_by
           in: query
           schema:
@@ -885,6 +1045,58 @@ paths:
                           $ref: '#/components/schemas/HostelSummary'
                       pagination:
                         $ref: '#/components/schemas/Pagination'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /search/categories:
+    get:
+      summary: Get all nearby categories for checklist filter
+      operationId: getNearbyCategories
+      tags: [Search]
+      responses:
+        "200":
+          description: List of nearby categories
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            category_id:
+                              type: integer
+                            category_name:
+                              type: string
+                            icon:
+                              type: string
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /search/transport-types:
+    get:
+      summary: Get all transport types for filter
+      operationId: getTransportTypes
+      tags: [Search]
+      responses:
+        "200":
+          description: List of transport types
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: string
+                        example: ["bus", "metro", "train", "auto"]
         "500":
           $ref: '#/components/responses/ServerError'
 
@@ -940,9 +1152,7 @@ paths:
         "500":
           $ref: '#/components/responses/ServerError'
 
-  # ---------------------------------------------------------------------------
-  # CITIES
-  # ---------------------------------------------------------------------------
+  # Cities
   /cities:
     get:
       summary: List all cities with hostel counts
@@ -1002,9 +1212,7 @@ paths:
         "500":
           $ref: '#/components/responses/ServerError'
 
-  # ---------------------------------------------------------------------------
-  # AREAS
-  # ---------------------------------------------------------------------------
+  # Areas
   /areas:
     get:
       summary: List all areas (optionally filtered by city)
@@ -1078,9 +1286,7 @@ paths:
         "500":
           $ref: '#/components/responses/ServerError'
 
-  # ---------------------------------------------------------------------------
-  # AMENITIES
-  # ---------------------------------------------------------------------------
+  # Amenities
   /amenities:
     get:
       summary: List all amenities grouped by category
@@ -1102,15 +1308,6 @@ paths:
                           type: array
                           items:
                             $ref: '#/components/schemas/AmenitySummary'
-                        example:
-                          Utilities:
-                            - id: 1
-                              name: WiFi
-                              icon: wifi
-                          Meals:
-                            - id: 4
-                              name: Breakfast
-                              icon: food
         "500":
           $ref: '#/components/responses/ServerError'
 
@@ -1133,20 +1330,42 @@ paths:
                         type: array
                         items:
                           type: string
-                        example: [Utilities, Meals, Security, Transport]
         "500":
           $ref: '#/components/responses/ServerError'
 
-  # ---------------------------------------------------------------------------
-  # BOOKINGS
-  # ---------------------------------------------------------------------------
+  # Institutions
+  /institutions:
+    get:
+      summary: List all institutions
+      operationId: getAllInstitutions
+      tags: [Institutions]
+      parameters:
+        - name: city_id
+          in: query
+          schema:
+            type: integer
+          description: Filter by city
+      responses:
+        "200":
+          description: List of institutions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Institution'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # Bookings
   /bookings:
     post:
       summary: Create a booking
-      description: >
-        Creates a confirmed booking for a hostel room. Automatically calculates
-        total amount and 20% advance payment. Uses a database transaction to
-        prevent double-booking.
       operationId: createBooking
       tags: [Bookings]
       security:
@@ -1194,16 +1413,12 @@ paths:
                             type: integer
                           booking_reference:
                             type: string
-                            example: BKG12345678
                           total_amount:
                             type: number
-                            example: 36000
                           advance_paid:
                             type: number
-                            example: 7200
                           balance_due:
                             type: number
-                            example: 28800
                           check_in_date:
                             type: string
                             format: date
@@ -1224,31 +1439,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                success: false
-                error: Room not found
         "409":
           description: No beds available or dates conflict
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                noBeds:
-                  value:
-                    success: false
-                    error: No beds available in this room
-                conflict:
-                  value:
-                    success: false
-                    error: Room already booked for these dates
         "500":
           $ref: '#/components/responses/ServerError'
 
   /bookings/{id}:
     get:
       summary: Get booking by ID
-      description: Only the booking owner or an admin can view full booking details.
       operationId: getBookingById
       tags: [Bookings]
       security:
@@ -1279,7 +1481,6 @@ paths:
   /bookings/{id}/cancel:
     post:
       summary: Cancel a booking
-      description: Cancels a booking and increments available beds. Only the booking owner, hostel owner, or admin can cancel.
       operationId: cancelBooking
       tags: [Bookings]
       security:
@@ -1324,9 +1525,7 @@ paths:
         "500":
           $ref: '#/components/responses/ServerError'
 
-  # ---------------------------------------------------------------------------
-  # REVIEWS
-  # ---------------------------------------------------------------------------
+  # Reviews
   /reviews/hostel/{id}:
     get:
       summary: Get reviews for a hostel
@@ -1366,7 +1565,6 @@ paths:
                                 type: integer
                               average_rating:
                                 type: string
-                                example: "4.2"
                               average_cleanliness:
                                 type: string
                               average_food:
@@ -1387,7 +1585,6 @@ paths:
   /reviews:
     post:
       summary: Post a review for a hostel
-      description: A user can only review a hostel they have booked. One review per hostel per user.
       operationId: createReview
       tags: [Reviews]
       security:
@@ -1408,7 +1605,6 @@ paths:
                   type: number
                   minimum: 1
                   maximum: 5
-                  example: 4
                 cleanliness_rating:
                   type: number
                   minimum: 1
@@ -1432,7 +1628,6 @@ paths:
                 comment:
                   type: string
                   nullable: true
-                  example: Great place, clean and affordable!
       responses:
         "201":
           description: Review created
@@ -1471,7 +1666,6 @@ paths:
   /reviews/{id}:
     put:
       summary: Update a review
-      description: Reviews can only be edited within 7 days of posting.
       operationId: updateReview
       tags: [Reviews]
       security:
@@ -1529,7 +1723,7 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          description: Review edit window expired (7 days)
+          description: Review edit window expired
           content:
             application/json:
               schema:
@@ -1644,9 +1838,7 @@ paths:
         "500":
           $ref: '#/components/responses/ServerError'
 
-  # ---------------------------------------------------------------------------
-  # USERS
-  # ---------------------------------------------------------------------------
+  # Users
   /users/profile:
     get:
       summary: Get the authenticated user's profile
@@ -1758,7 +1950,7 @@ paths:
         "400":
           $ref: '#/components/responses/ValidationError'
         "401":
-          description: Current password incorrect or not authenticated
+          description: Current password incorrect
           content:
             application/json:
               schema:
@@ -1880,7 +2072,6 @@ paths:
                 notes:
                   type: string
                   nullable: true
-                  example: Interested in the double room
       responses:
         "201":
           description: Added to wishlist
@@ -1947,13 +2138,10 @@ paths:
         "500":
           $ref: '#/components/responses/ServerError'
 
-  # ---------------------------------------------------------------------------
-  # OWNER
-  # ---------------------------------------------------------------------------
+  # Owner
   /owner/dashboard:
     get:
       summary: Owner dashboard summary
-      description: Returns hostel, room, booking, and revenue statistics for the authenticated owner.
       operationId: getOwnerDashboard
       tags: [Owner]
       security:
@@ -1969,45 +2157,7 @@ paths:
                   - type: object
                     properties:
                       data:
-                        type: object
-                        properties:
-                          hostels:
-                            type: object
-                            properties:
-                              total:
-                                type: integer
-                          rooms:
-                            type: object
-                            properties:
-                              total:
-                                type: integer
-                              beds:
-                                type: object
-                                properties:
-                                  total:
-                                    type: integer
-                                  available:
-                                    type: integer
-                          bookings:
-                            type: object
-                            properties:
-                              total:
-                                type: integer
-                              confirmed:
-                                type: integer
-                              pending:
-                                type: integer
-                              completed:
-                                type: integer
-                          revenue:
-                            type: object
-                            properties:
-                              total:
-                                type: number
-                          recent_activity:
-                            type: array
-                            items:
-                              type: object
+                        $ref: '#/components/schemas/OwnerDashboardStats'
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -2054,7 +2204,6 @@ paths:
 
     post:
       summary: Register a new hostel
-      description: Creates a new hostel under the authenticated owner. Hostel is unverified until approved by admin.
       operationId: createHostel
       tags: [Owner]
       security:
@@ -2069,10 +2218,8 @@ paths:
               properties:
                 hostel_name:
                   type: string
-                  example: Sunrise Hostel
                 contact_number:
                   type: string
-                  example: "+923001234567"
                 alternate_number:
                   type: string
                   nullable: true
@@ -2082,10 +2229,8 @@ paths:
                   nullable: true
                 address:
                   type: string
-                  example: 45 Main Boulevard
                 city_id:
                   type: integer
-                  example: 1
                 area_id:
                   type: integer
                   nullable: true
@@ -2109,7 +2254,7 @@ paths:
                   nullable: true
       responses:
         "201":
-          description: Hostel registered (pending admin verification)
+          description: Hostel registered
           content:
             application/json:
               schema:
@@ -2119,7 +2264,6 @@ paths:
                     properties:
                       message:
                         type: string
-                        example: Hostel registered successfully. It will be visible after admin verification.
                       data:
                         type: object
                         properties:
@@ -2129,7 +2273,6 @@ paths:
                             type: string
                           is_verified:
                             type: boolean
-                            example: false
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -2205,7 +2348,7 @@ paths:
 
   /owner/hostels/{id}/rooms:
     get:
-      summary: Get rooms for a hostel owned by the authenticated owner
+      summary: Get rooms for a hostel
       operationId: getHostelRooms
       tags: [Owner]
       security:
@@ -2253,21 +2396,16 @@ paths:
               properties:
                 room_type_id:
                   type: integer
-                  example: 2
                 room_number:
                   type: string
                   nullable: true
-                  example: "B-101"
                 total_beds_in_room:
                   type: integer
-                  example: 3
                 monthly_rent:
                   type: number
-                  example: 10000
                 security_deposit:
                   type: number
                   nullable: true
-                  example: 5000
                 floor_number:
                   type: integer
                   default: 1
@@ -2298,7 +2436,7 @@ paths:
 
   /owner/hostels/{id}/bookings:
     get:
-      summary: Get bookings for a hostel owned by the authenticated owner
+      summary: Get bookings for a hostel
       operationId: getHostelBookings
       tags: [Owner]
       security:
@@ -2427,7 +2565,6 @@ paths:
 
     delete:
       summary: Delete a room
-      description: Cannot delete rooms with active (confirmed or pending) bookings.
       operationId: deleteRoom
       tags: [Owner]
       security:
@@ -2459,15 +2596,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                success: false
-                error: Cannot delete room with active bookings
         "500":
           $ref: '#/components/responses/ServerError'
 
-  # ---------------------------------------------------------------------------
-  # ADMIN
-  # ---------------------------------------------------------------------------
+  # Admin
   /admin/dashboard:
     get:
       summary: Admin dashboard statistics
@@ -2486,48 +2618,7 @@ paths:
                   - type: object
                     properties:
                       data:
-                        type: object
-                        properties:
-                          totals:
-                            type: object
-                            properties:
-                              users:
-                                type: integer
-                              hostels:
-                                type: integer
-                              bookings:
-                                type: integer
-                              reviews:
-                                type: integer
-                              revenue:
-                                type: number
-                          pending:
-                            type: object
-                            properties:
-                              hostels:
-                                type: integer
-                              users:
-                                type: integer
-                          recent_activity:
-                            type: array
-                            items:
-                              type: object
-                              properties:
-                                booking_id:
-                                  type: integer
-                                booking_reference:
-                                  type: string
-                                status:
-                                  type: string
-                                total_amount:
-                                  type: number
-                                created_at:
-                                  type: string
-                                  format: date-time
-                                user_name:
-                                  type: string
-                                hostel_name:
-                                  type: string
+                        $ref: '#/components/schemas/DashboardStats'
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -2537,7 +2628,7 @@ paths:
 
   /admin/users:
     get:
-      summary: List all users (admin)
+      summary: List all users
       operationId: adminGetAllUsers
       tags: [Admin]
       security:
@@ -2556,7 +2647,6 @@ paths:
           in: query
           schema:
             type: string
-          description: Search by name, email, or phone
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
       responses:
@@ -2582,9 +2672,69 @@ paths:
         "500":
           $ref: '#/components/responses/ServerError'
 
+    post:
+      summary: Create a new user (admin)
+      operationId: adminCreateUser
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [first_name, email, phone, password]
+              properties:
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                phone:
+                  type: string
+                password:
+                  type: string
+                  format: password
+                user_type:
+                  type: string
+                  enum: [student, professional, owner, admin]
+                  default: student
+                institution_id:
+                  type: integer
+                verified:
+                  type: boolean
+                  default: false
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                      data:
+                        $ref: '#/components/schemas/User'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
   /admin/users/{id}:
     get:
-      summary: Get a user's full detail (admin)
+      summary: Get user details
       operationId: adminGetUserById
       tags: [Admin]
       security:
@@ -2593,7 +2743,7 @@ paths:
         - $ref: '#/components/parameters/PathId'
       responses:
         "200":
-          description: User detail with booking and review stats
+          description: User details
           content:
             application/json:
               schema:
@@ -2608,15 +2758,12 @@ paths:
                             properties:
                               institution_name:
                                 type: string
-                                nullable: true
                               total_bookings:
                                 type: integer
                               total_reviews:
                                 type: integer
                               recent_bookings:
                                 type: array
-                                items:
-                                  type: object
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -2627,8 +2774,7 @@ paths:
           $ref: '#/components/responses/ServerError'
 
     delete:
-      summary: Soft-delete a user (admin)
-      description: Anonymises user data rather than performing a hard delete.
+      summary: Soft-delete a user
       operationId: adminDeleteUser
       tags: [Admin]
       security:
@@ -2637,7 +2783,7 @@ paths:
         - $ref: '#/components/parameters/PathId'
       responses:
         "200":
-          description: User deleted (anonymised)
+          description: User deleted
           content:
             application/json:
               schema:
@@ -2659,7 +2805,7 @@ paths:
 
   /admin/users/{id}/role:
     put:
-      summary: Change a user's role (admin)
+      summary: Change user role
       operationId: adminChangeUserRole
       tags: [Admin]
       security:
@@ -2677,7 +2823,6 @@ paths:
                 role:
                   type: string
                   enum: [student, professional, owner, admin]
-                  example: owner
       responses:
         "200":
           description: Role changed
@@ -2690,7 +2835,6 @@ paths:
                     properties:
                       message:
                         type: string
-                        example: User role changed to owner successfully
         "400":
           description: Invalid role
           content:
@@ -2708,7 +2852,7 @@ paths:
 
   /admin/users/{id}/verify:
     put:
-      summary: Verify a user account (admin)
+      summary: Verify a user account
       operationId: adminVerifyUser
       tags: [Admin]
       security:
@@ -2745,7 +2889,7 @@ paths:
 
   /admin/hostels:
     get:
-      summary: List all hostels (admin, including unverified)
+      summary: List all hostels
       operationId: adminGetAllHostels
       tags: [Admin]
       security:
@@ -2784,9 +2928,165 @@ paths:
         "500":
           $ref: '#/components/responses/ServerError'
 
+    post:
+      summary: Create a new hostel (admin)
+      operationId: adminCreateHostel
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hostel_name, contact_number, address, city_id, gender_preference]
+              properties:
+                hostel_name:
+                  type: string
+                owner_name:
+                  type: string
+                contact_number:
+                  type: string
+                alternate_number:
+                  type: string
+                email:
+                  type: string
+                address:
+                  type: string
+                city_id:
+                  type: integer
+                area_id:
+                  type: integer
+                pincode:
+                  type: string
+                latitude:
+                  type: number
+                longitude:
+                  type: number
+                gender_preference:
+                  type: string
+                  enum: [male, female, co-ed]
+                description:
+                  type: string
+      responses:
+        "201":
+          description: Hostel created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                      data:
+                        type: object
+                        properties:
+                          hostel_id:
+                            type: integer
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+    put:
+      summary: Update a hostel (admin)
+      operationId: adminUpdateHostel
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hostel_name:
+                  type: string
+                owner_name:
+                  type: string
+                contact_number:
+                  type: string
+                alternate_number:
+                  type: string
+                email:
+                  type: string
+                address:
+                  type: string
+                area_id:
+                  type: integer
+                pincode:
+                  type: string
+                latitude:
+                  type: number
+                longitude:
+                  type: number
+                gender_preference:
+                  type: string
+                description:
+                  type: string
+                is_verified:
+                  type: boolean
+      responses:
+        "200":
+          description: Hostel updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      summary: Delete a hostel (admin)
+      operationId: adminDeleteHostel
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: Hostel deleted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
   /admin/hostels/pending:
     get:
-      summary: List pending (unverified) hostels (admin)
+      summary: List pending hostels
       operationId: adminGetPendingHostels
       tags: [Admin]
       security:
@@ -2838,7 +3138,7 @@ paths:
 
   /admin/hostels/{id}/verify:
     put:
-      summary: Verify a hostel (admin)
+      summary: Verify a hostel
       operationId: adminVerifyHostel
       tags: [Admin]
       security:
@@ -2870,5 +3170,796 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/bookings:
+    get:
+      summary: List all bookings
+      operationId: adminGetAllBookings
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, confirmed, cancelled, completed]
+        - name: hostel_id
+          in: query
+          schema:
+            type: integer
+        - name: user_id
+          in: query
+          schema:
+            type: integer
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        "200":
+          description: Paginated bookings list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Booking'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/bookings/{id}/status:
+    put:
+      summary: Update booking status
+      operationId: adminUpdateBookingStatus
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [pending, confirmed, cancelled, completed]
+                cancellation_reason:
+                  type: string
+                  nullable: true
+      responses:
+        "200":
+          description: Booking status updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+        "400":
+          description: Invalid status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/bookings/{id}:
+    delete:
+      summary: Delete a booking
+      operationId: adminDeleteBooking
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: Booking deleted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/audit-logs:
+    get:
+      summary: View audit logs
+      operationId: getAuditLogs
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: table_name
+          in: query
+          schema:
+            type: string
+            enum: [users, hostels, bookings, reviews, wishlist]
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [INSERT, UPDATE, DELETE]
+        - name: user_id
+          in: query
+          schema:
+            type: integer
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/PageParam'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AuditLog'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # Admin - Reports
+  /admin/reports/summary:
+    get:
+      summary: Get report summary data for charts
+      operationId: getReportSummary
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [week, month, year]
+            default: month
+      responses:
+        "200":
+          description: Report summary data
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user_trend:
+                            type: array
+                          booking_trend:
+                            type: array
+                          top_hostels:
+                            type: array
+                          status_distribution:
+                            type: array
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/reports/users:
+    get:
+      summary: Export users report as CSV
+      operationId: exportUsersReport
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [student, professional, owner, admin]
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/reports/bookings:
+    get:
+      summary: Export bookings report as CSV
+      operationId: exportBookingsReport
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, confirmed, cancelled, completed]
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/reports/revenue:
+    get:
+      summary: Export revenue report as CSV
+      operationId: exportRevenueReport
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # Admin - Platform Management (Cities)
+  /admin/cities:
+    post:
+      summary: Create a new city
+      operationId: adminCreateCity
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [city_name]
+              properties:
+                city_name:
+                  type: string
+                state:
+                  type: string
+                country:
+                  type: string
+                  default: Pakistan
+      responses:
+        "201":
+          description: City created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          city_id:
+                            type: integer
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/cities/{id}:
+    put:
+      summary: Update a city
+      operationId: adminUpdateCity
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                city_name:
+                  type: string
+                state:
+                  type: string
+                country:
+                  type: string
+      responses:
+        "200":
+          description: City updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      summary: Delete a city
+      operationId: adminDeleteCity
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: City deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # Admin - Platform Management (Areas)
+  /admin/areas:
+    post:
+      summary: Create a new area
+      operationId: adminCreateArea
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [area_name, city_id]
+              properties:
+                area_name:
+                  type: string
+                city_id:
+                  type: integer
+                pincode:
+                  type: string
+      responses:
+        "201":
+          description: Area created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          area_id:
+                            type: integer
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/areas/{id}:
+    put:
+      summary: Update an area
+      operationId: adminUpdateArea
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                area_name:
+                  type: string
+                city_id:
+                  type: integer
+                pincode:
+                  type: string
+      responses:
+        "200":
+          description: Area updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      summary: Delete an area
+      operationId: adminDeleteArea
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: Area deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # Admin - Platform Management (Amenities)
+  /admin/amenities:
+    post:
+      summary: Create a new amenity
+      operationId: adminCreateAmenity
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amenity_name]
+              properties:
+                amenity_name:
+                  type: string
+                category:
+                  type: string
+                  enum: [basic, food, furniture, electronics, safety, other]
+                  default: basic
+                icon_name:
+                  type: string
+      responses:
+        "201":
+          description: Amenity created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          amenity_id:
+                            type: integer
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/amenities/{id}:
+    put:
+      summary: Update an amenity
+      operationId: adminUpdateAmenity
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amenity_name:
+                  type: string
+                category:
+                  type: string
+                icon_name:
+                  type: string
+      responses:
+        "200":
+          description: Amenity updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      summary: Delete an amenity
+      operationId: adminDeleteAmenity
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: Amenity deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  # Admin - Platform Management (Institutions)
+  /admin/institutions:
+    post:
+      summary: Create a new institution
+      operationId: adminCreateInstitution
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [institution_name, city_id]
+              properties:
+                institution_name:
+                  type: string
+                institution_type:
+                  type: string
+                  enum: [university, college, workplace, other]
+                  default: other
+                address:
+                  type: string
+                city_id:
+                  type: integer
+                area_id:
+                  type: integer
+                latitude:
+                  type: number
+                longitude:
+                  type: number
+      responses:
+        "201":
+          description: Institution created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          institution_id:
+                            type: integer
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+  /admin/institutions/{id}:
+    put:
+      summary: Update an institution
+      operationId: adminUpdateInstitution
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                institution_name:
+                  type: string
+                institution_type:
+                  type: string
+                address:
+                  type: string
+                city_id:
+                  type: integer
+                area_id:
+                  type: integer
+                latitude:
+                  type: number
+                longitude:
+                  type: number
+      responses:
+        "200":
+          description: Institution updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/ServerError'
+
+    delete:
+      summary: Delete an institution
+      operationId: adminDeleteInstitution
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        "200":
+          description: Institution deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/ServerError'
