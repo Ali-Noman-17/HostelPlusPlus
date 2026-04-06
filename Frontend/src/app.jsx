@@ -14,6 +14,13 @@ import ManageHostels from './pages/Owner/ManageHostels';
 import HostelForm from './pages/Owner/HostelForm';
 import ManageRooms from './pages/Owner/ManageRooms';
 import RoomForm from './pages/Owner/RoomForm';
+import ManageUsers from './pages/Admin/ManageUsers';
+import ManageHostelsAdmin from './pages/Admin/ManageHostels';
+import VerifyHostels from './pages/Admin/VerifyHostels';
+import ReportsDashboard from './pages/Admin/ReportsDashboard';
+import PlatformManagement from './pages/Admin/PlatformManagement';
+import AuditLogs from './pages/Admin/AuditLogs';
+import AdminBookings from './pages/Admin/AdminBookings';
 
 
 function App() {
@@ -45,6 +52,13 @@ function App() {
           <Route path="/owner/hostels/:hostelId/rooms/new" element={<ProtectedRoute allowedRoles={['owner']}><RoomForm /></ProtectedRoute>} />
           <Route path="/owner/rooms/:id/edit" element={<ProtectedRoute allowedRoles={['owner']}><RoomForm /></ProtectedRoute>} />
           
+          <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['admin']}><ManageUsers /></ProtectedRoute>} />
+          <Route path="/admin/hostels" element={<ProtectedRoute allowedRoles={['admin']}><ManageHostelsAdmin /></ProtectedRoute>} />
+          <Route path="/admin/verify-hostels" element={<ProtectedRoute allowedRoles={['admin']}><VerifyHostels /></ProtectedRoute>} />
+          <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={['admin']}><ReportsDashboard /></ProtectedRoute>} />
+          <Route path="/admin/platform" element={<ProtectedRoute allowedRoles={['admin']}><PlatformManagement /></ProtectedRoute>} />
+          <Route path="/admin/audit-logs" element={<ProtectedRoute allowedRoles={['admin']}><AuditLogs /></ProtectedRoute>} />
+          <Route path="/admin/bookings" element={<ProtectedRoute allowedRoles={['admin']}><AdminBookings /></ProtectedRoute>} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

@@ -584,6 +584,483 @@ const getDashboardStats = async (req, res) => {
     }
 };
 
+const getReportSummary = async (req, res) => {
+  try {
+    const { period = 'month' } = req.query;
+    
+    let dateCondition = '';
+    if (period === 'week') {
+      dateCondition = `AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)`;
+    } else if (period === 'month') {
+      dateCondition = `AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)`;
+    } else if (period === 'year') {
+      dateCondition = `AND created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)`;
+    } else {
+      dateCondition = `AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)`;
+    }
+    
+    const userTrend = await db.query(`
+      SELECT DATE(created_at) as date, COUNT(*) as count
+      FROM users 
+      WHERE 1=1 ${dateCondition}
+      GROUP BY DATE(created_at)
+      ORDER BY date
+    `);
+    
+    const bookingTrend = await db.query(`
+      SELECT DATE(b.booking_date) as date, 
+             COUNT(*) as booking_count,
+             COALESCE(SUM(b.total_amount), 0) as revenue
+      FROM bookings b
+      WHERE b.booking_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+      GROUP BY DATE(b.booking_date)
+      ORDER BY date
+    `);
+    
+    const topHostels = await db.query(`
+      SELECT h.hostel_name, 
+             COUNT(b.booking_id) as total_bookings,
+             COALESCE(SUM(b.total_amount), 0) as total_revenue
+      FROM hostels h
+      JOIN hostel_rooms hr ON h.hostel_id = hr.hostel_id
+      LEFT JOIN bookings b ON hr.hostel_room_id = b.hostel_room_id
+      WHERE b.status IN ('confirmed', 'completed')
+      GROUP BY h.hostel_id
+      ORDER BY total_bookings DESC
+      LIMIT 5
+    `);
+    
+    const statusDistribution = await db.query(`
+      SELECT status, COUNT(*) as count
+      FROM bookings
+      GROUP BY status
+    `);
+    
+    res.json({
+      success: true,
+      data: {
+        user_trend: userTrend,
+        booking_trend: bookingTrend,
+        top_hostels: topHostels,
+        status_distribution: statusDistribution
+      }
+    });
+    
+  } catch (error) {
+    console.error('Report summary error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const exportBookingsReport = async (req, res) => {
+  try {
+    const { start_date, end_date, status } = req.query;
+    
+    let sql = `
+      SELECT b.booking_id, b.booking_reference, 
+             DATE_FORMAT(b.check_in_date, '%Y-%m-%d') as check_in_date,
+             DATE_FORMAT(b.check_out_date, '%Y-%m-%d') as check_out_date,
+             b.status, b.total_amount, b.advance_paid, b.payment_status,
+             DATE_FORMAT(b.booking_date, '%Y-%m-%d %H:%i:%s') as booking_date,
+             CONCAT(u.first_name, ' ', u.last_name) as guest_name,
+             u.email as guest_email, u.phone as guest_phone,
+             h.hostel_name, rt.type_name as room_type
+      FROM bookings b
+      JOIN users u ON b.user_id = u.user_id
+      JOIN hostel_rooms hr ON b.hostel_room_id = hr.hostel_room_id
+      JOIN hostels h ON hr.hostel_id = h.hostel_id
+      JOIN room_types rt ON hr.room_type_id = rt.room_type_id
+      WHERE 1=1
+    `;
+    let params = [];
+    
+    if (start_date) {
+      sql += ` AND DATE(b.booking_date) >= ?`;
+      params.push(start_date);
+    }
+    if (end_date) {
+      sql += ` AND DATE(b.booking_date) <= ?`;
+      params.push(end_date);
+    }
+    if (status) {
+      sql += ` AND b.status = ?`;
+      params.push(status);
+    }
+    
+    sql += ` ORDER BY b.booking_date DESC`;
+    
+    const bookings = await db.query(sql, params);
+    
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=bookings_report_${Date.now()}.csv`);
+    
+    const headers = ['Booking ID', 'Reference', 'Guest Name', 'Guest Email', 'Guest Phone', 
+                     'Hostel', 'Room Type', 'Check In', 'Check Out', 'Status', 
+                     'Total Amount (PKR)', 'Advance Paid (PKR)', 'Payment Status', 'Booking Date'];
+    res.write(headers.join(',') + '\n');
+    
+    bookings.forEach(b => {
+      const row = [
+        b.booking_id,
+        `"${b.booking_reference}"`,
+        `"${(b.guest_name || '').replace(/"/g, '""')}"`,
+        `"${b.guest_email.replace(/"/g, '""')}"`,
+        `"${b.guest_phone.replace(/"/g, '""')}"`,
+        `"${b.hostel_name.replace(/"/g, '""')}"`,
+        `"${b.room_type.replace(/"/g, '""')}"`,
+        b.check_in_date,
+        b.check_out_date,
+        b.status,
+        b.total_amount,
+        b.advance_paid,
+        b.payment_status,
+        b.booking_date
+      ];
+      res.write(row.join(',') + '\n');
+    });
+    
+    res.end();
+    
+  } catch (error) {
+    console.error('Export bookings error:', error);
+    res.status(500).json({ success: false, error: 'Failed to generate report' });
+  }
+};
+
+const exportRevenueReport = async (req, res) => {
+  try {
+    const { start_date, end_date } = req.query;
+    
+    let sql = `
+      SELECT DATE(b.booking_date) as date,
+             COUNT(*) as booking_count,
+             COALESCE(SUM(b.total_amount), 0) as total_revenue,
+             COALESCE(SUM(b.advance_paid), 0) as total_advance,
+             COALESCE(AVG(b.total_amount), 0) as avg_booking_value
+      FROM bookings b
+      WHERE b.status IN ('confirmed', 'completed')
+    `;
+    let params = [];
+    
+    if (start_date) {
+      sql += ` AND DATE(b.booking_date) >= ?`;
+      params.push(start_date);
+    }
+    if (end_date) {
+      sql += ` AND DATE(b.booking_date) <= ?`;
+      params.push(end_date);
+    }
+    
+    sql += ` GROUP BY DATE(b.booking_date) ORDER BY date DESC`;
+    
+    const revenue = await db.query(sql, params);
+    
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=revenue_report_${Date.now()}.csv`);
+    
+    const headers = ['Date', 'Booking Count', 'Total Revenue (PKR)', 'Total Advance (PKR)', 'Average Booking Value (PKR)'];
+    res.write(headers.join(',') + '\n');
+    
+    revenue.forEach(r => {
+      const row = [
+        r.date,
+        r.booking_count,
+        r.total_revenue,
+        r.total_advance,
+        parseFloat(r.avg_booking_value).toFixed(2)
+      ];
+      res.write(row.join(',') + '\n');
+    });
+    
+    res.end();
+    
+  } catch (error) {
+    console.error('Export revenue error:', error);
+    res.status(500).json({ success: false, error: 'Failed to generate report' });
+  }
+};
+
+const getAuditLogs = async (req, res) => {
+  try {
+    const {
+      table_name,
+      action,
+      user_id,
+      start_date,
+      end_date,
+      page = 1,
+      limit = 50
+    } = req.query;
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    let whereConditions = ['1=1'];
+    let params = [];
+
+    if (table_name) {
+      whereConditions.push('table_name = ?');
+      params.push(table_name);
+    }
+    if (action) {
+      whereConditions.push('action = ?');
+      params.push(action);
+    }
+    if (user_id) {
+      whereConditions.push('changed_by = ?');
+      params.push(user_id);
+    }
+    if (start_date) {
+      whereConditions.push('changed_at >= ?');
+      params.push(start_date);
+    }
+    if (end_date) {
+      whereConditions.push('changed_at <= ?');
+      params.push(end_date);
+    }
+
+    const whereClause = whereConditions.join(' AND ');
+
+    const logs = await db.query(`
+      SELECT 
+        al.log_id,
+        al.table_name,
+        al.record_id,
+        al.action,
+        al.old_data,
+        al.new_data,
+        al.changed_at,
+        CONCAT(u.first_name, ' ', u.last_name) as changed_by_name,
+        u.email as changed_by_email
+      FROM audit_log al
+      LEFT JOIN users u ON al.changed_by = u.user_id
+      WHERE ${whereClause}
+      ORDER BY al.changed_at DESC
+      LIMIT ? OFFSET ?
+    `, [...params, parseInt(limit), offset]);
+
+    const countResult = await db.query(`
+      SELECT COUNT(*) as total 
+      FROM audit_log al
+      WHERE ${whereClause}
+    `, params);
+
+    const total = countResult[0]?.total || 0;
+
+    res.json({
+      success: true,
+      data: logs,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+
+  } catch (error) {
+    console.error('Get audit logs error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const getAllBookings = async (req, res) => {
+  try {
+    const {
+      status,
+      hostel_id,
+      user_id,
+      start_date,
+      end_date,
+      page = 1,
+      limit = 20
+    } = req.query;
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    let whereConditions = ['1=1'];
+    let params = [];
+
+    if (status) {
+      whereConditions.push('b.status = ?');
+      params.push(status);
+    }
+    if (hostel_id) {
+      whereConditions.push('h.hostel_id = ?');
+      params.push(hostel_id);
+    }
+    if (user_id) {
+      whereConditions.push('b.user_id = ?');
+      params.push(user_id);
+    }
+    if (start_date) {
+      whereConditions.push('b.check_in_date >= ?');
+      params.push(start_date);
+    }
+    if (end_date) {
+      whereConditions.push('b.check_out_date <= ?');
+      params.push(end_date);
+    }
+
+    const whereClause = whereConditions.join(' AND ');
+
+    const bookings = await db.query(`
+      SELECT 
+        b.booking_id,
+        b.booking_reference,
+        DATE_FORMAT(b.check_in_date, '%Y-%m-%d') as check_in_date,
+        DATE_FORMAT(b.check_out_date, '%Y-%m-%d') as check_out_date,
+        b.status,
+        b.total_amount,
+        b.advance_paid,
+        b.payment_status,
+        b.special_requests,
+        DATE_FORMAT(b.booking_date, '%Y-%m-%d %H:%i:%s') as booking_date,
+        b.cancelled_at,
+        b.cancellation_reason,
+        u.user_id,
+        CONCAT(u.first_name, ' ', u.last_name) as guest_name,
+        u.email as guest_email,
+        u.phone as guest_phone,
+        h.hostel_id,
+        h.hostel_name,
+        h.address,
+        a.area_name,
+        c.city_name,
+        rt.type_name as room_type,
+        hr.room_number,
+        hr.monthly_rent
+      FROM bookings b
+      JOIN users u ON b.user_id = u.user_id
+      JOIN hostel_rooms hr ON b.hostel_room_id = hr.hostel_room_id
+      JOIN hostels h ON hr.hostel_id = h.hostel_id
+      JOIN room_types rt ON hr.room_type_id = rt.room_type_id
+      LEFT JOIN areas a ON h.area_id = a.area_id
+      JOIN cities c ON h.city_id = c.city_id
+      WHERE ${whereClause}
+      ORDER BY b.booking_date DESC
+      LIMIT ? OFFSET ?
+    `, [...params, parseInt(limit), offset]);
+
+    const countResult = await db.query(`
+      SELECT COUNT(*) as total 
+      FROM bookings b
+      JOIN hostel_rooms hr ON b.hostel_room_id = hr.hostel_room_id
+      JOIN hostels h ON hr.hostel_id = h.hostel_id
+      WHERE ${whereClause}
+    `, params);
+
+    const total = countResult[0]?.total || 0;
+
+    res.json({
+      success: true,
+      data: bookings,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+
+  } catch (error) {
+    console.error('Get all bookings error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const updateBookingStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, cancellation_reason } = req.body;
+    const adminId = req.user.id;
+
+    const validStatuses = ['pending', 'confirmed', 'cancelled', 'completed'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, error: 'Invalid status' });
+    }
+
+    const [booking] = await db.query(`
+      SELECT b.*, hr.hostel_room_id 
+      FROM bookings b
+      JOIN hostel_rooms hr ON b.hostel_room_id = hr.hostel_room_id
+      WHERE b.booking_id = ?
+    `, [id]);
+
+    if (!booking) {
+      return res.status(404).json({ success: false, error: 'Booking not found' });
+    }
+
+    if (status === 'cancelled' && booking.status !== 'cancelled') {
+      await db.query(
+        'UPDATE hostel_rooms SET available_beds = available_beds + 1 WHERE hostel_room_id = ?',
+        [booking.hostel_room_id]
+      );
+    }
+
+    if (status === 'confirmed' && booking.status === 'pending') {
+      await db.query(
+        'UPDATE hostel_rooms SET available_beds = available_beds - 1 WHERE hostel_room_id = ?',
+        [booking.hostel_room_id]
+      );
+    }
+
+    await db.query(`
+      UPDATE bookings 
+      SET status = ?, 
+          cancelled_at = CASE WHEN ? = 'cancelled' THEN NOW() ELSE cancelled_at END,
+          cancellation_reason = CASE WHEN ? = 'cancelled' THEN ? ELSE cancellation_reason END
+      WHERE booking_id = ?
+    `, [status, status, status, cancellation_reason || null, id]);
+
+    await db.query(`
+      INSERT INTO audit_log (table_name, record_id, action, old_data, new_data, changed_by)
+      VALUES ('bookings', ?, 'UPDATE', ?, ?, ?)
+    `, [id, JSON.stringify({ status: booking.status }), JSON.stringify({ status }), adminId]);
+
+    res.json({ success: true, message: `Booking ${status} successfully` });
+
+  } catch (error) {
+    console.error('Update booking status error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const deleteBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.user.id;
+
+    const [booking] = await db.query(`
+      SELECT b.*, hr.hostel_room_id 
+      FROM bookings b
+      JOIN hostel_rooms hr ON b.hostel_room_id = hr.hostel_room_id
+      WHERE b.booking_id = ?
+    `, [id]);
+
+    if (!booking) {
+      return res.status(404).json({ success: false, error: 'Booking not found' });
+    }
+
+    if (booking.status === 'confirmed') {
+      await db.query(
+        'UPDATE hostel_rooms SET available_beds = available_beds + 1 WHERE hostel_room_id = ?',
+        [booking.hostel_room_id]
+      );
+    }
+
+    await db.query(`
+      INSERT INTO audit_log (table_name, record_id, action, old_data, new_data, changed_by)
+      VALUES ('bookings', ?, 'DELETE', ?, NULL, ?)
+    `, [id, JSON.stringify(booking), adminId]);
+
+    await db.query('DELETE FROM bookings WHERE booking_id = ?', [id]);
+
+    res.json({ success: true, message: 'Booking deleted successfully' });
+
+  } catch (error) {
+    console.error('Delete booking error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 module.exports = {
     getAllUsers,
     getUserById,
@@ -593,5 +1070,12 @@ module.exports = {
     getAllHostels,
     getPendingHostels,
     verifyHostel,
-    getDashboardStats
+    getDashboardStats,
+    exportBookingsReport,
+    exportRevenueReport,
+    getReportSummary,
+    getAuditLogs,
+    getAllBookings,
+    updateBookingStatus,
+    deleteBooking
 };
