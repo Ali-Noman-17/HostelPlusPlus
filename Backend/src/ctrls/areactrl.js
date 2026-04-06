@@ -41,7 +41,6 @@ const getAllAreas = async (req, res) => {
     }
 };
 
-
 const getHostelsByArea = async (req, res) => {
     const { id } = req.params;
     
@@ -79,7 +78,72 @@ const getHostelsByArea = async (req, res) => {
     }
 };
 
+const createArea = async (req, res) => {
+  try {
+    const { area_name, city_id, pincode } = req.body;
+    
+    if (!area_name || !city_id) {
+      return res.status(400).json({ success: false, error: 'Area name and city ID are required' });
+    }
+    
+    const result = await db.query(
+      'INSERT INTO areas (area_name, city_id, pincode) VALUES (?, ?, ?)',
+      [area_name, city_id, pincode || null]
+    );
+    
+    res.status(201).json({
+      success: true,
+      message: 'Area created successfully',
+      data: { area_id: result.insertId }
+    });
+  } catch (error) {
+    console.error('Create area error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const updateArea = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { area_name, city_id, pincode } = req.body;
+    
+    const result = await db.query(
+      'UPDATE areas SET area_name = ?, city_id = ?, pincode = ? WHERE area_id = ?',
+      [area_name, city_id, pincode, id]
+    );
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Area not found' });
+    }
+    
+    res.json({ success: true, message: 'Area updated successfully' });
+  } catch (error) {
+    console.error('Update area error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const deleteArea = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await db.query('DELETE FROM areas WHERE area_id = ?', [id]);
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Area not found' });
+    }
+    
+    res.json({ success: true, message: 'Area deleted successfully' });
+  } catch (error) {
+    console.error('Delete area error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 module.exports = {
     getAllAreas,
-    getHostelsByArea
+    getHostelsByArea,
+    createArea,
+    updateArea,
+    deleteArea
 };

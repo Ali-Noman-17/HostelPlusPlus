@@ -192,6 +192,7 @@ const getUserBookings = async (req, res) => {
         });
     }
 };
+
 const getWishlist = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -316,6 +317,67 @@ const removeFromWishlist = async (req, res) => {
     }
 };
 
+const adminCreateUser = async (req, res) => {
+  try {
+    const {
+      first_name,
+      last_name,
+      email,
+      phone,
+      password,
+      user_type,
+      institution_id,
+      verified
+    } = req.body;
+
+    const existing = await db.query(
+      'SELECT user_id FROM users WHERE email = ? OR phone = ?',
+      [email, phone]
+    );
+
+    if (existing.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: 'User with this email or phone already exists'
+      });
+    }
+
+    const bcrypt = require('bcrypt');
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await db.query(
+      `INSERT INTO users 
+       (first_name, last_name, email, phone, password_hash, user_type, institution_id, verified, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        first_name,
+        last_name || null,
+        email,
+        phone,
+        hashedPassword,
+        user_type || 'student',
+        institution_id || null,
+        verified ? 1 : 0
+      ]
+    );
+
+    const [newUser] = await db.query(
+      'SELECT user_id, first_name, last_name, email, phone, user_type, verified, created_at FROM users WHERE user_id = ?',
+      [result.insertId]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully',
+      data: newUser
+    });
+
+  } catch (error) {
+    console.error('Admin create user error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 module.exports = {
     getProfile,
     updateProfile,
@@ -323,5 +385,6 @@ module.exports = {
     getUserBookings,
     getWishlist,
     addToWishlist,
-    removeFromWishlist
+    removeFromWishlist,
+    adminCreateUser
 };

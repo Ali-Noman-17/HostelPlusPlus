@@ -74,7 +74,72 @@ const getCityAreas = async (req, res) => {
     }
 };
 
+const createCity = async (req, res) => {
+  try {
+    const { city_name, state, country } = req.body;
+    
+    if (!city_name) {
+      return res.status(400).json({ success: false, error: 'City name is required' });
+    }
+    
+    const result = await db.query(
+      'INSERT INTO cities (city_name, state, country) VALUES (?, ?, ?)',
+      [city_name, state || null, country || 'Pakistan']
+    );
+    
+    res.status(201).json({
+      success: true,
+      message: 'City created successfully',
+      data: { city_id: result.insertId }
+    });
+  } catch (error) {
+    console.error('Create city error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const updateCity = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { city_name, state, country } = req.body;
+    
+    const result = await db.query(
+      'UPDATE cities SET city_name = ?, state = ?, country = ? WHERE city_id = ?',
+      [city_name, state, country, id]
+    );
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'City not found' });
+    }
+    
+    res.json({ success: true, message: 'City updated successfully' });
+  } catch (error) {
+    console.error('Update city error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const deleteCity = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await db.query('DELETE FROM cities WHERE city_id = ?', [id]);
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'City not found' });
+    }
+    
+    res.json({ success: true, message: 'City deleted successfully' });
+  } catch (error) {
+    console.error('Delete city error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 module.exports = {
     getAllCities,
-    getCityAreas
+    getCityAreas,
+    createCity,
+    updateCity,
+    deleteCity
 };

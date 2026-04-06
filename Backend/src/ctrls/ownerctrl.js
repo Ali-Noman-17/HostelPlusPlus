@@ -172,7 +172,6 @@ const updateHostel = async (req, res) => {
         const ownerId = req.user.id;
         const updates = req.body;
 
-        // Get owner's name
         const [user] = await db.query(
             'SELECT first_name, last_name FROM users WHERE user_id = ?',
             [String(ownerId)]

@@ -2,42 +2,65 @@ const db = require('../config/database');
 
 const searchHostels = async (req, res) => {
     try {
-        console.log('='.repeat(50));
-        console.log('SEARCH REQUEST STARTED');
-        
-        const { 
-            city_id, 
-            area_id, 
-            min_price, 
-            max_price, 
+        const {
+            city_id,
+            area_id,
+            min_price,
+            max_price,
             gender,
             sort_by = 'rating',
             page = 1,
-            limit = 10 
+            limit = 10,
+            nearby_categories,   
+            nearby_max_distance,
+            transport_type,
+            transport_max_distance
         } = req.query;
 
-        console.log('Raw query params:', { city_id, area_id, min_price, max_price, gender, sort_by, page, limit });
-
-        const pageNum = parseInt(page);
-        const limitNum = parseInt(limit);
-        const offset = (pageNum - 1) * limitNum;
-
+        const offset = (parseInt(page) - 1) * parseInt(limit);
+        
         let whereConditions = ['h.is_verified = 1'];
-        let whereParams = [];
+        let params = [];
 
         if (city_id) {
             whereConditions.push('h.city_id = ?');
-            whereParams.push(city_id);
+            params.push(city_id);
         }
-
         if (area_id) {
             whereConditions.push('h.area_id = ?');
-            whereParams.push(area_id);
+            params.push(area_id);
         }
-
         if (gender) {
             whereConditions.push('(h.gender_preference = ? OR h.gender_preference = "co-ed")');
-            whereParams.push(gender);
+            params.push(gender);
+        }
+
+        let nearbyJoin = '';
+        let nearbyHaving = '';
+        if (nearby_categories && nearby_max_distance) {
+            const categoryIds = nearby_categories.split(',').map(id => parseInt(id));
+            if (categoryIds.length > 0) {
+                const placeholders = categoryIds.map(() => '?').join(',');
+                nearbyJoin = `
+                    JOIN nearby_places np ON h.hostel_id = np.hostel_id
+                    AND np.category_id IN (${placeholders})
+                    AND np.distance_km <= ?
+                `;
+                params.push(...categoryIds, nearby_max_distance);
+                nearbyHaving = `GROUP BY h.hostel_id HAVING COUNT(DISTINCT np.category_id) = ?`;
+                params.push(categoryIds.length);
+            }
+        }
+
+        let transportJoin = '';
+        if (transport_type && transport_max_distance) {
+            transportJoin = `
+                JOIN hostel_transport ht ON h.hostel_id = ht.hostel_id
+                JOIN transport_routes tr ON ht.route_id = tr.route_id
+                AND tr.transport_type = ?
+                AND ht.distance_to_stop_km <= ?
+            `;
+            params.push(transport_type, transport_max_distance);
         }
 
         const whereClause = whereConditions.length > 0 
@@ -56,29 +79,37 @@ const searchHostels = async (req, res) => {
                 h.total_reviews,
                 h.is_verified,
                 MIN(hr.monthly_rent) as min_rent,
-                COUNT(DISTINCT hr.hostel_room_id) as total_rooms,
-                COUNT(DISTINCT CASE WHEN hr.is_available = 1 THEN hr.hostel_room_id END) as available_rooms
+                MAX(hr.monthly_rent) as max_rent,
+                COUNT(DISTINCT CASE WHEN hr.is_available = TRUE THEN hr.hostel_room_id END) as available_rooms,
+                (
+                    SELECT GROUP_CONCAT(amenity_name SEPARATOR ', ')
+                    FROM amenities am
+                    JOIN hostel_amenities ha ON am.amenity_id = ha.amenity_id
+                    WHERE ha.hostel_id = h.hostel_id AND ha.is_available = TRUE
+                    LIMIT 3
+                ) as amenities_preview
             FROM hostels h
             JOIN cities c ON h.city_id = c.city_id
             LEFT JOIN areas a ON h.area_id = a.area_id
             LEFT JOIN hostel_rooms hr ON h.hostel_id = hr.hostel_id
+            ${nearbyJoin}
+            ${transportJoin}
             ${whereClause}
             GROUP BY h.hostel_id
+            ${nearbyHaving ? nearbyHaving : ''}
         `;
 
         let havingConditions = [];
-        let havingParams = [];
-
         if (min_price || max_price) {
             if (min_price && max_price) {
                 havingConditions.push(`min_rent BETWEEN ? AND ?`);
-                havingParams.push(min_price, max_price);
+                params.push(min_price, max_price);
             } else if (min_price) {
                 havingConditions.push(`min_rent >= ?`);
-                havingParams.push(min_price);
+                params.push(min_price);
             } else if (max_price) {
                 havingConditions.push(`min_rent <= ?`);
-                havingParams.push(max_price);
+                params.push(max_price);
             }
         }
 
@@ -97,62 +128,40 @@ const searchHostels = async (req, res) => {
         }
 
         sql += ` LIMIT ? OFFSET ?`;
-        const paginationParams = [limitNum, offset];
+        params.push(parseInt(limit), parseInt(offset));
 
-        const allParams = [...whereParams, ...havingParams, ...paginationParams];
+        const hostels = await db.query(sql, params);
 
-        console.log('='.repeat(50));
-        console.log('FINAL QUERY:');
-        console.log('SQL:', sql);
-        console.log('WHERE params:', whereParams);
-        console.log('HAVING params:', havingParams);
-        console.log('Pagination params:', paginationParams);
-        console.log('Combined params (before conversion):', allParams);
-        console.log('Combined param types:', allParams.map(p => typeof p));
-        console.log('='.repeat(50));
-
-        const hostels = await db.query(sql, allParams);
-        console.log(`Query returned ${hostels.length} results`);
-
-        const countSql = `
+        let countSql = `
             SELECT COUNT(DISTINCT h.hostel_id) as total
             FROM hostels h
-            LEFT JOIN hostel_rooms hr ON h.hostel_id = hr.hostel_id
+            ${nearbyJoin}
+            ${transportJoin}
             ${whereClause}
+            ${nearbyHaving ? 'GROUP BY h.hostel_id' : ''}
         `;
         
-        const countResult = await db.query(countSql, whereParams);
+        let countParams = params.slice(0, -2);
+        const countResult = await db.query(countSql, countParams);
         const total = countResult[0]?.total || 0;
-
-        console.log('Total count:', total);
 
         res.json({
             success: true,
             data: hostels,
             pagination: {
-                page: pageNum,
-                limit: limitNum,
-                total: total,
-                pages: Math.ceil(total / limitNum)
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                pages: Math.ceil(total / parseInt(limit))
             }
         });
 
     } catch (error) {
-        console.error('='.repeat(50));
-        console.error('ERROR IN SEARCH:');
-        console.error('Error name:', error.name);
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
-        if (error.sql) {
-            console.error('SQL that caused error:', error.sql);
-        }
-        console.error('='.repeat(50));
-        
+        console.error('Search error:', error);
         res.status(500).json({
             success: false,
-            error: error.message,
-            sql: error.sql,
-            sqlMessage: error.sqlMessage
+            error: 'Search failed',
+            details: error.message
         });
     }
 };
@@ -218,7 +227,43 @@ const checkAvailability = async (req, res) => {
     }
 };
 
+const getNearbyCategories = async (req, res) => {
+    try {
+        const categories = await db.query(`
+            SELECT category_id, category_name, icon 
+            FROM nearby_categories 
+            ORDER BY category_name
+        `);
+        res.json({
+            success: true,
+            data: categories
+        });
+    } catch (error) {
+        console.error('Error fetching categories:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+const getTransportTypes = async (req, res) => {
+    try {
+        const types = await db.query(`
+            SELECT DISTINCT transport_type 
+            FROM transport_routes 
+            ORDER BY transport_type
+        `);
+        res.json({
+            success: true,
+            data: types.map(t => t.transport_type)
+        });
+    } catch (error) {
+        console.error('Error fetching transport types:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
 module.exports = {
     searchHostels,
-    checkAvailability
+    checkAvailability,
+    getNearbyCategories,
+    getTransportTypes
 };

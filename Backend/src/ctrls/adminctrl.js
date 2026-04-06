@@ -518,6 +518,7 @@ const verifyHostel = async (req, res) => {
         });
     }
 };
+
 const getDashboardStats = async (req, res) => {
     try {
         const [userCount] = await db.query('SELECT COUNT(*) as total FROM users');
@@ -582,6 +583,7 @@ const getDashboardStats = async (req, res) => {
         });
     }
 };
+
 module.exports = {
     getAllUsers,
     getUserById,
