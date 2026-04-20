@@ -13,7 +13,7 @@ const pool = mysql.createPool({
     ssl: isProduction ? { rejectUnauthorized: false } : null,
 
     waitForConnections: true,   
-    connectionLimit: 10,        
+    connectionLimit: isProduction ? 5 : 10,        
     queueLimit: 0,              
     
     enableKeepAlive: true,      
