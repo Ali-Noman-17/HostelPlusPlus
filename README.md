@@ -458,12 +458,9 @@ The system defines four roles with progressively increasing privileges:
 
 | Query Type | Before (ms) | After (ms) | Improvement |
 |---|---|---|---|
-| Hostel search with filters | 45.32 | 5.32 | 88% |
-| Nearby institution search | 78.45 | 8.45 | 89% |
-| Amenity filtering | 95.67 | 12.34 | 87% |
-| User booking history | 32.45 | 0.95 | 97% |
-
-> Detailed `EXPLAIN ANALYZE` output available in the Backend Explanation Document.
+| Hostel search with filters | 1.14 | 0.184 | 83.8% |
+| Hostel Search near institution | 0.606 | 0.0585 | 90.3% |
+| User booking history | 0.823 | 0.732 | 11% |
 
 ---
 
@@ -549,7 +546,7 @@ The system defines four roles with progressively increasing privileges:
 | `GET` | `/admin/reports/bookings` | JWT + Admin | Export bookings CSV |
 | `GET` | `/admin/reports/revenue` | JWT + Admin | Export revenue CSV |
 
-> Complete OpenAPI 3.0 specification available in `swagger.yaml`.
+> Complete OpenAPI 3.0 specification available in `swagger.yaml`. Open file at 'https://editor.swagger.io/' to view.
 
 ---
 
@@ -572,5 +569,5 @@ The system defines four roles with progressively increasing privileges:
 
 ---
 
-> For full API documentation, refer to `swagger.yaml`. View at 'https://editor.swagger.io/' 
+> For full API documentation, refer to `swagger.yaml`.
 > For Backend architecture details, refer to the Backend Explanation Document.
