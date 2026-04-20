@@ -17,8 +17,11 @@ app.use(helmet());
 
 
 app.use(cors({
-    origin: NODE_ENV === 'development' ? '*' : 'https://yourdomain.com',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    origin: process.env.NODE_ENV === 'production' 
+        ? ['https://hostelplusplus17.vercel.app', 'https://yourdomain.com']
+        : '*',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
